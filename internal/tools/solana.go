@@ -26,6 +26,34 @@ type TransferInfo struct {
 	MultipleAccounts bool    // true if tx has multiple system_transfer instructions
 }
 
+type SuspiciousTransfer struct {
+    Signature string `json:"signature"`
+    Amount    string `json:"amount"`
+    Token     string `json:"token"`
+    Sender    string `json:"sender"`
+}
+
+type DetectedTransfer struct {
+	Signature string
+	Amount    float64
+	Sender    string
+	TokenMint string // Empty if it's a SOL transfer
+}
+
+type TransferDetail struct {
+	Signature       string
+	Amount          float64
+	Sender          string
+	TokenMint       string
+	IsTokenTransfer bool
+}
+
+const (
+	TokenProgramID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+	SystemProgramID = "11111111111111111111111111111111"
+	rpcURL = "https://api.mainnet-beta.solana.com" // Replace with your preferred RPC
+)
+
 func IsValidSolanaAddress(address string) bool {
 	decoded, err := base58.Decode(address)
 	if err != nil {
@@ -35,7 +63,6 @@ func IsValidSolanaAddress(address string) bool {
 }
 
 func GetSignatures(address string) ([]string, error) {
-	rpcURL := "https://mainnet.helius-rpc.com/?api-key=0f31c860-68c3-4d89-bc63-a2f8957a0603"
 
 	// Prepare JSON-RPC request
 	reqBody := RPCRequest{
@@ -67,7 +94,6 @@ func GetSignatures(address string) ([]string, error) {
 }
 
 func GetTransaction(signature string) (map[string]interface{}, error) {
-	rpcURL := "https://mainnet.helius-rpc.com/?api-key=0f31c860-68c3-4d89-bc63-a2f8957a0603"
 
 	reqBody := RPCRequest{
 		Jsonrpc: "2.0",
@@ -98,7 +124,6 @@ func GetTransaction(signature string) (map[string]interface{}, error) {
 }
 
 func AnalyzeSystemTransferToAddress(signature string, address string) ([]TransferInfo, error) {
-	rpcURL := "https://mainnet.helius-rpc.com/?api-key=0f31c860-68c3-4d89-bc63-a2f8957a0603"
 
 	reqBody := map[string]interface{}{
 		"jsonrpc": "2.0",
@@ -200,6 +225,95 @@ func AnalyzeSystemTransferToAddress(signature string, address string) ([]Transfe
 
 	return infos, nil
 }
+
+func PrintInstructionTypes(signature string) {
+	reqBody := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "getTransaction",
+		"params": []interface{}{
+			signature,
+			map[string]interface{}{"encoding": "jsonParsed"},
+		},
+	}
+
+	jsonData, _ := json.Marshal(reqBody)
+	resp, err := http.Post(rpcURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		fmt.Println("Request error:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := ioutil.ReadAll(resp.Body)
+
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
+		fmt.Println("Unmarshal error:", err)
+		return
+	}
+
+	result, ok := rpcResp["result"].(map[string]interface{})
+	if !ok || result == nil {
+		fmt.Println("No result found for transaction")
+		return
+	}
+
+	transaction := result["transaction"].(map[string]interface{})
+	message := transaction["message"].(map[string]interface{})
+	instructions := message["instructions"].([]interface{})
+
+	// Gather all instructions including inner ones
+	meta := result["meta"].(map[string]interface{})
+	if innerInstructions, ok := meta["innerInstructions"].([]interface{}); ok {
+		for _, inner := range innerInstructions {
+			if innerMap, ok := inner.(map[string]interface{}); ok {
+				if innerInstrs, ok := innerMap["instructions"].([]interface{}); ok {
+					instructions = append(instructions, innerInstrs...)
+				}
+			}
+		}
+	}
+
+	for i, inst := range instructions {
+		instMap, ok := inst.(map[string]interface{})
+		if !ok {
+			continue
+		}
+	
+		parsed, hasParsed := instMap["parsed"].(map[string]interface{})
+		if !hasParsed {
+			continue
+		}
+	
+		instType, hasType := parsed["type"].(string)
+		if !hasType || instType != "transferChecked" {
+			continue
+		}
+	
+		info, ok := parsed["info"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+	
+		authority, _ := info["authority"].(string)
+		mint, _ := info["mint"].(string)
+	
+		tokenAmountMap, ok := info["tokenAmount"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		uiAmount, _ := tokenAmountMap["uiAmount"].(float64)
+	
+		fmt.Printf("[%d] transferChecked Instruction:\n", i+1)
+		fmt.Printf("  Authority: %s\n", authority)
+		fmt.Printf("  Mint: %s\n", mint)
+		fmt.Printf("  Token Amount: %.2f\n", uiAmount)
+		fmt.Println("--------------------------------")
+	}
+	
+}
+
 
 
 

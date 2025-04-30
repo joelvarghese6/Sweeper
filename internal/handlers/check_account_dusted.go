@@ -36,8 +36,8 @@ func CheckAccountDusted(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	fmt.Println(params.Publickey)
-	
-	address := "2tBUHRfWHVPAkFcm4KdoqngVrudvBSmC7PSCorCUofU2"
+
+	address := params.Publickey
 	signatures, err := tools.GetSignatures(address)
 
 	if err != nil {

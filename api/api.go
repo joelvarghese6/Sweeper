@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	//"github.com/joelvarghese6/mitigate-dust-attacks/internal/tools"
 )
 
 type CoinBalanceParams struct {
@@ -20,6 +21,25 @@ type CheckDustedResponse struct {
 	//whether it is dusted
 	Items []map[string]interface{}
 }
+
+type CheckAddressPoisoningResponse struct {
+	//response code
+	Code int
+
+	// etm
+	Poisoned bool
+}
+
+type GenerateFullReportResponse struct {
+	Code int
+	Details string
+}
+// type GenerateFullReportResponse struct {
+// 	Code int
+// 	Address string
+// 	Suspected bool
+// 	SuspiciousTransfers []tools.SuspiciousTransfer
+// }
 
 type CoinBalanceResponse struct {
 	// response
