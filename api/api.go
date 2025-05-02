@@ -15,45 +15,36 @@ type CheckDustedParams struct {
 }
 
 type CheckDustedResponse struct {
-	//response code
 	Code int
-
-	//whether it is dusted
 	Items []map[string]interface{}
 }
 
-type CheckAddressPoisoningResponse struct {
-	//response code
-	Code int
 
-	// etm
-	Poisoned bool
+type CheckAddressPoisoningResponse struct {
+	Code     int                             `json:"code"`
+	Poisoned bool                            `json:"poisoned"`
+	Matches  []AddressPoisoningMatchDetails  `json:"matches"`
+}
+
+type AddressPoisoningMatchDetails struct {
+	Signature      string `json:"signature"`
+	FromAddress    string `json:"from_address"`
+	SimilarAddress string `json:"similar_address"`
+	Amount         uint64 `json:"amount"`
 }
 
 type GenerateFullReportResponse struct {
 	Code int
 	Details string
 }
-// type GenerateFullReportResponse struct {
-// 	Code int
-// 	Address string
-// 	Suspected bool
-// 	SuspiciousTransfers []tools.SuspiciousTransfer
-// }
 
 type CoinBalanceResponse struct {
-	// response
 	Code int
-
-	//is there dust
 	Balance int64
 }
 
 type Error struct {
-	// Error code
 	Code int
-
-	//Error Message
 	Message string
 }
 

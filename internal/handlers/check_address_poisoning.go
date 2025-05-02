@@ -2,10 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
-	"time"
-
 	//"fmt"
+
 	"net/http"
 
 	"github.com/gorilla/schema"
@@ -45,30 +43,32 @@ func CheckAddressPoisoning(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//tools.PrintInstructionTypes(signatures[3])
+	result, err := tools.DetectAddressPoisoning(signatures)
 
-	for _, sig := range signatures {
-		tools.PrintInstructionTypes(sig)
-		fmt.Println(sig)
-		time.Sleep(1000 * time.Millisecond)
+	if err != nil {
+		log.Error(err)
+		api.InternalErrorHandler(w)
+		return
 	}
-	
 
-	// if err != nil {
-	// 	log.Error(err)
-	// 	api.InternalErrorHandler(w)
-	// 	return
-	// }
+	response := api.CheckAddressPoisoningResponse{
+		Code:     http.StatusOK,
+		Poisoned: result.Count > 0,
+	}
 
-	var response = api.CheckAddressPoisoningResponse {
-		Code: http.StatusOK,
-		Poisoned: false,
+	for _, match := range result.Matches {
+		response.Matches = append(response.Matches, api.AddressPoisoningMatchDetails{
+			Signature:      match.Signature,
+			FromAddress:    match.FromAddress,
+			SimilarAddress: match.SimilarAddress,
+			Amount:         match.Amount,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
-		log.Error(err)
+		log.Printf("Encoding response failed: %v", err)
 		api.InternalErrorHandler(w)
 		return
 	}

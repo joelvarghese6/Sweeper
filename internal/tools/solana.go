@@ -26,26 +26,14 @@ type TransferInfo struct {
 	MultipleAccounts bool    // true if tx has multiple system_transfer instructions
 }
 
-type SuspiciousTransfer struct {
-    Signature string `json:"signature"`
-    Amount    string `json:"amount"`
-    Token     string `json:"token"`
-    Sender    string `json:"sender"`
-}
-
-type DetectedTransfer struct {
-	Signature string
-	Amount    float64
-	Sender    string
-	TokenMint string // Empty if it's a SOL transfer
-}
-
-type TransferDetail struct {
-	Signature       string
-	Amount          float64
-	Sender          string
-	TokenMint       string
-	IsTokenTransfer bool
+type PoisoningResult struct {
+	Count int
+	Matches []struct {
+		Signature      string
+		FromAddress    string
+		SimilarAddress string
+		Amount         uint64
+	}
 }
 
 const (
@@ -60,6 +48,16 @@ func IsValidSolanaAddress(address string) bool {
 		return false
 	}
 	return len(decoded) == 32
+}
+
+func sendRPC(req RPCRequest) ([]byte, error) {
+	payload, _ := json.Marshal(req)
+	resp, err := http.Post(rpcURL, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
 }
 
 func GetSignatures(address string) ([]string, error) {
@@ -226,93 +224,89 @@ func AnalyzeSystemTransferToAddress(signature string, address string) ([]Transfe
 	return infos, nil
 }
 
-func PrintInstructionTypes(signature string) {
-	reqBody := map[string]interface{}{
-		"jsonrpc": "2.0",
-		"id":      1,
-		"method":  "getTransaction",
-		"params": []interface{}{
-			signature,
-			map[string]interface{}{"encoding": "jsonParsed"},
-		},
-	}
+func DetectAddressPoisoning(signatures []string) (*PoisoningResult, error) {
+	result := &PoisoningResult{}
 
-	jsonData, _ := json.Marshal(reqBody)
-	resp, err := http.Post(rpcURL, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		fmt.Println("Request error:", err)
-		return
-	}
-	defer resp.Body.Close()
+	seen := make(map[string]string) // prefix => address
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	for _, sig := range signatures {
+		req := RPCRequest{
+			Jsonrpc: "2.0",
+			ID:      1,
+			Method:  "getParsedTransaction",
+			Params:  []interface{}{sig, map[string]interface{}{"encoding": "jsonParsed"}},
+		}
+		resp, err := sendRPC(req)
+		if err != nil {
+			continue
+		}
 
-	var rpcResp map[string]interface{}
-	if err := json.Unmarshal(body, &rpcResp); err != nil {
-		fmt.Println("Unmarshal error:", err)
-		return
-	}
+		var txData struct {
+			Result struct {
+				Transaction struct {
+					Message struct {
+						Instructions []struct {
+							Program string `json:"program"`
+							Parsed  struct {
+								Type string `json:"type"`
+								Info map[string]interface{}
+							} `json:"parsed"`
+						} `json:"instructions"`
+					} `json:"message"`
+				} `json:"transaction"`
+			} `json:"result"`
+		}
 
-	result, ok := rpcResp["result"].(map[string]interface{})
-	if !ok || result == nil {
-		fmt.Println("No result found for transaction")
-		return
-	}
+		if err := json.Unmarshal(resp, &txData); err != nil {
+			continue
+		}
 
-	transaction := result["transaction"].(map[string]interface{})
-	message := transaction["message"].(map[string]interface{})
-	instructions := message["instructions"].([]interface{})
+		for _, ix := range txData.Result.Transaction.Message.Instructions {
+			typ := ix.Parsed.Type
+			info := ix.Parsed.Info
 
-	// Gather all instructions including inner ones
-	meta := result["meta"].(map[string]interface{})
-	if innerInstructions, ok := meta["innerInstructions"].([]interface{}); ok {
-		for _, inner := range innerInstructions {
-			if innerMap, ok := inner.(map[string]interface{}); ok {
-				if innerInstrs, ok := innerMap["instructions"].([]interface{}); ok {
-					instructions = append(instructions, innerInstrs...)
-				}
+			var from string
+			var amt uint64
+
+			if typ == "transfer" && info["source"] != nil && info["destination"] != nil {
+				from = info["source"].(string)
+				//to = info["destination"].(string)
+				amt = uint64(info["lamports"].(float64))
+			} else if typ == "transferChecked" && info["source"] != nil && info["destination"] != nil {
+				from = info["source"].(string)
+				//to = info["destination"].(string)
+				amt = uint64(info["amount"].(float64))
+			} else {
+				continue
 			}
-		}
-	}
 
-	for i, inst := range instructions {
-		instMap, ok := inst.(map[string]interface{})
-		if !ok {
-			continue
+
+			if amt > 10000 { // >0.00001 SOL or token
+				continue
+			}
+
+			prefix := from[:3]
+			if known, ok := seen[prefix]; ok && known != from {
+				result.Count++
+				result.Matches = append(result.Matches, struct {
+					Signature      string
+					FromAddress    string
+					SimilarAddress string
+					Amount         uint64
+				}{
+					Signature:      sig,
+					FromAddress:    from,
+					SimilarAddress: known,
+					Amount:         amt,
+				})
+			}
+			seen[prefix] = from
 		}
-	
-		parsed, hasParsed := instMap["parsed"].(map[string]interface{})
-		if !hasParsed {
-			continue
-		}
-	
-		instType, hasType := parsed["type"].(string)
-		if !hasType || instType != "transferChecked" {
-			continue
-		}
-	
-		info, ok := parsed["info"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-	
-		authority, _ := info["authority"].(string)
-		mint, _ := info["mint"].(string)
-	
-		tokenAmountMap, ok := info["tokenAmount"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		uiAmount, _ := tokenAmountMap["uiAmount"].(float64)
-	
-		fmt.Printf("[%d] transferChecked Instruction:\n", i+1)
-		fmt.Printf("  Authority: %s\n", authority)
-		fmt.Printf("  Mint: %s\n", mint)
-		fmt.Printf("  Token Amount: %.2f\n", uiAmount)
-		fmt.Println("--------------------------------")
 	}
-	
+	return result, nil
 }
+
+
 
 
 

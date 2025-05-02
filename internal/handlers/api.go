@@ -11,6 +11,6 @@ func Handler(r *chi.Mux) {
 	r.Route("/api", func(router chi.Router) {
 		router.Get("/check-dusted", CheckAccountDusted)
 		router.Get("/check-address-poisoning", CheckAddressPoisoning)
-		router.Get("/generate-report", GenerateDetailedReport)
+		router.Get("/filter-transactions", FilterTransactions)
 	})
 }
