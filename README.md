@@ -19,8 +19,8 @@ A Go-based API for detecting various blockchain-based attacks on wallet addresse
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/wallet-protection-api.git
-cd wallet-protection-api
+git clone https://github.com/joelvarghese6/Sweeper.git
+cd Sweeper
 ```
 
 2. Install dependencies
@@ -56,15 +56,16 @@ GET /api/check-dusted?Publickey={wallet_address}
 **Example Response:**
 ```json
 {
-  "address": "0x123...",
-  "dust_attacks": [
+  "Code": "200",
+  "Items": [
     {
-      "transaction_id": "0xabc...",
-      "timestamp": "2023-10-15T14:30:00Z",
-      "amount": "0.00001"
+      "Other": "2tBUH...",
+      "Amount": "20.00",
+      "Dust": "true",
+      "Multi": "true",
+      "Sig": "0xabc...",
     }
   ],
-  "total_count": 1
 }
 ```
 
@@ -82,15 +83,16 @@ GET /api/check-address-poisoning?Publickey={wallet_address}
 **Example Response:**
 ```json
 {
-  "address": "0x123...",
+  "Code": "200",
   "poisoning_attempts": [
     {
-      "transaction_id": "0xdef...",
-      "timestamp": "2023-10-16T09:15:00Z",
-      "spoofed_address": "0x124..."
+      "from_address": "0xdef...",
+      "similiar_address": "2tBU...",
+      "signature": "0x124...",
+      "amount": "20.00"
     }
   ],
-  "total_count": 1
+  "Poisoned": "true"
 }
 ```
 
